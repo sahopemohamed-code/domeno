@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Step Py - Pro Edition</title>
+    <style>
+        :root { --bg: #0f172a; --board: #14532d; --gold: #fbbf24; --white: #fefce8; --black: #1a1a1a; }
+        body { background: var(--bg); color: white; font-family: sans-serif; margin: 0; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
+        
+        #login-screen, #waiting-screen, #winner-screen { position: fixed; inset: 0; background: var(--bg); z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; }
+        .card { background: #1e293b; padding: 25px; border-radius: 20px; border: 2px solid var(--gold); text-align: center; width: 85%; max-width: 320px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .btn-main { background: var(--gold); color: black; font-weight: bold; padding: 12px; border-radius: 10px; border: none; cursor: pointer; width: 100%; }
+
+        .header { background: #1e293b; padding: 10px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid var(--gold); z-index: 20; }
+        #turn-indicator { padding: 5px 12px; border-radius: 15px; font-weight: bold; font-size: 0.8rem; transition: 0.3s; }
+        .your-turn { background: #22c55e; box-shadow: 0 0 10px #22c55e; }
+        .waiting-turn { background: #ef4444; opacity: 0.8; }
+
+        #game-table-wrapper { flex: 1; overflow-x: auto; display: flex; align-items: center; background: radial-gradient(circle, var(--board) 0%, #064e3b 100%); margin: 10px; border-radius: 20px; border: 4px solid #065f46; scroll-behavior: smooth; }
+        #game-table { display: flex; align-items: center; gap: 4px; min-width: max-content; padding: 0 100px; }
+
+        .domino { background: var(--white); border-radius: 4px; display: flex; flex-shrink: 0; box-shadow: 2px 2px 5px rgba(0,0,0,0.4); border: 1px solid #444; overflow: hidden; }
+        .domino.on-board { width: 66px; height: 33px; flex-direction: row; }
+        .domino.in-hand { width: 42px; height: 84px; flex-direction: column; cursor: pointer; transition: 0.2s; }
+        .domino.invalid-move { animation: shake 0.4s; border: 2px solid #ef4444; }
+
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+
+        .half { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); padding: 4px; gap: 1px; }
+        .dot { width: 6px; height: 6px; background: var(--black); border-radius: 50%; visibility: hidden; align-self: center; justify-self: center; }
+        .dot.v { visibility: visible; }
+        .line { background: #ccc; flex-shrink: 0; }
+        .on-board .line { width: 2px; height: 100%; }
+        .in-hand .line { height: 2px; width: 100%; }
+
+        .hand-area { background: rgba(15,23,42,0.98); padding: 10px; border-top: 2px solid var(--gold); position: relative; }
+        .emoji-bar { display: flex; gap: 10px; justify-content: center; margin-bottom: 8px; }
+        #floating-emoji { position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%); font-size: 5rem; z-index: 1000; pointer-events: none; opacity: 0; transition: 0.5s; }
+        .hand { display: flex; justify-content: center; gap: 8px; overflow-x: auto; padding: 10px; min-height: 95px; }
+
+        #chat-icon { position: fixed; bottom: 120px; right: 20px; background: var(--gold); width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 60; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        #chat-notification { position: absolute; top: 0; right: 0; width: 15px; height: 15px; background: #ef4444; border-radius: 50%; border: 2px solid white; display: none; }
+        #chat-window { position: fixed; bottom: 100px; right: 20px; width: 280px; height: 350px; background: #1e293b; border: 2px solid var(--gold); border-radius: 15px; display: none; flex-direction: column; z-index: 70; box-shadow: 0 10px 25px rgba(0,0,0,0.5); overflow: hidden; }
+        #chat-header { background: #334155; padding: 10px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+        #chat-messages { flex: 1; padding: 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; font-size: 0.9rem; }
+        .msg-item { background: #334155; padding: 5px 10px; border-radius: 8px; max-width: 90%; }
+        .msg-user { color: var(--gold); font-weight: bold; font-size: 0.75rem; margin-bottom: 2px; }
+        #chat-input-area { display: flex; padding: 8px; gap: 5px; background: #0f172a; }
+        #chat-input { flex: 1; background: #1e293b; border: 1px solid #475569; color: white; border-radius: 5px; padding: 5px; outline: none; }
+
+        #error-msg { position: fixed; bottom: 150px; left: 50%; transform: translateX(-50%); background: #ef4444; color: white; padding: 8px 16px; border-radius: 20px; font-size: 0.8rem; display: none; z-index: 50; }
+    </style>
+</head>
+<body>
+
+<div id="login-screen">
+    <div class="card">
+        <h2 style="color:var(--gold);">Step Py</h2>
+        <input type="number" id="room-input" style="width:100%; padding:12px; margin:15px 0; text-align:center; border-radius:10px;" placeholder="رقم الغرفة">
+        <button class="btn-main" onclick="joinRoom()">دخول</button>
+    </div>
+</div>
+
+<div id="waiting-screen" style="display: none;">
+    <div class="card">
+        <h3 id="player-id-label">أنت اللاعب..</h3>
+        <p id="player-count-msg">جاري الانتظار...</p>
+        <button id="start-btn" class="btn-main" style="display:none;" onclick="startGame()">ابدأ اللعب 🎮</button>
+    </div>
+</div>
+
+<div id="winner-screen" style="display:none;">
+    <div class="card">
+        <h1 style="color:var(--gold);">انتهت الجولة!</h1>
+        <h2 id="winner-text">فاز الفريق</h2>
+        <button class="btn-main" id="reset-btn" onclick="resetRoomAndReload()">جولة جديدة (تصفير العودة)</button>
+    </div>
+</div>
+
+<div id="error-msg">القطعة غير مناسبة! ❌</div>
+
+<div class="header">
+    <div id="turn-indicator" class="waiting-turn">--</div>
+    <div style="font-size: 0.75rem;">
+        <div>فريق 1&3: <span id="s13" style="color:var(--gold)">0</span></div>
+        <div>فريق 2&4: <span id="s24" style="color:var(--gold)">0</span></div>
+    </div>
+</div>
+
+<div id="game-table-wrapper"><div id="game-table"></div></div>
+<div id="floating-emoji">😂</div>
+
+<div id="chat-icon" onclick="toggleChat()">
+    <span style="font-size: 24px;">💬</span>
+    <div id="chat-notification"></div>
+</div>
+
+<div id="chat-window">
+    <div id="chat-header">
+        <span>الدردشة الجماعية</span>
+        <button onclick="toggleChat()" style="background:none; border:none; color:white; cursor:pointer;">✖</button>
+    </div>
+    <div id="chat-messages"></div>
+    <div id="chat-input-area">
+        <input type="text" id="chat-input" placeholder="اكتب هنا..." onkeypress="handleChatKey(event)">
+        <button onclick="sendMessage()" style="background:var(--gold); border:none; border-radius:5px; padding:5px 10px; cursor:pointer;">إرسال</button>
+    </div>
+</div>
+
+<div class="hand-area">
+    <div class="emoji-bar">
+        <button class="btn-main" style="width:40px; padding:5px;" onclick="sendEmoji('😂')">😂</button>
+        <button class="btn-main" style="width:40px; padding:5px;" onclick="sendEmoji('🔥')">🔥</button>
+        <button class="btn-main" style="width:40px; padding:5px;" onclick="sendEmoji('👏')">👏</button>
+    </div>
+    <div id="draw-btn-container" style="text-align: center; margin-bottom:5px;">
+        <button onclick="drawPiece()" style="background:var(--gold); border:none; padding:6px 15px; border-radius:10px; font-weight:bold; cursor:pointer;">سحب +</button>
+    </div>
+    <div id="my-hand" class="hand"></div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getDatabase, ref, push, onValue, set, get, remove, serverTimestamp, runTransaction, limitToLast, query } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+    const conf = { databaseURL: "https://domino-online-e2ede-default-rtdb.firebaseio.com" };
+    const app = initializeApp(conf);
+    const db = getDatabase(app);
+
+    let roomPath, movesRef, poolRef, statusRef, turnRef, countRef, emojiRef, scoresRef, chatRef, fullRoomRef;
+    let myHand = [], myPlayerNum = 0, currentTurn = 1, totalPlayers = 0;
+    let leftEnd = null, rightEnd = null, isChatOpen = false;
+    const patterns = { 0:[], 1:[4], 2:[0,8], 3:[0,4,8], 4:[0,2,6,8], 5:[0,2,4,6,8], 6:[0,2,3,5,6,8] };
+
+    const sfx = {
+        play: new Audio('https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3'),
+        error: new Audio('https://assets.mixkit.co/active_storage/sfx/2572/2572-preview.mp3') 
+    };
+
+    window.joinRoom = async function() {
+        const room = document.getElementById('room-input').value;
+        if(!room) return;
+        roomPath = "room_" + room;
+        fullRoomRef = ref(db, roomPath);
+        
+        countRef = ref(db, roomPath + '/players_count');
+        const res = await runTransaction(countRef, (c) => (c || 0) + 1);
+        myPlayerNum = res.snapshot.val();
+
+        movesRef = ref(db, roomPath + '/moves');
+        poolRef = ref(db, roomPath + '/pool');
+        statusRef = ref(db, roomPath + '/status');
+        turnRef = ref(db, roomPath + '/turn');
+        emojiRef = ref(db, roomPath + '/emoji');
+        scoresRef = ref(db, roomPath + '/scores');
+        chatRef = ref(db, roomPath + '/chat');
+
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('waiting-screen').style.display = 'flex';
+        document.getElementById('player-id-label').innerText = "اللاعب رقم (" + myPlayerNum + ")";
+
+        if(myPlayerNum === 1) document.getElementById('start-btn').style.display = 'block';
+
+        onValue(countRef, (s) => {
+            totalPlayers = s.val() || 1;
+            document.getElementById('player-count-msg').innerText = `المتواجدون: ${totalPlayers} / 4`;
+            document.getElementById('draw-btn-container').style.display = (totalPlayers >= 4) ? 'none' : 'block';
+        });
+
+        onValue(statusRef, (s) => {
+            const val = s.val();
+            if(val === 'started') {
+                document.getElementById('waiting-screen').style.display = 'none';
+                document.getElementById('winner-screen').style.display = 'none';
+                if(myHand.length === 0) dealInitial();
+            } else if (val === 'finished') {
+                document.getElementById('winner-screen').style.display = 'flex';
+            }
+        });
+
+        onValue(scoresRef, (s) => {
+            const data = s.val() || {t13: 0, t24: 0};
+            document.getElementById('s13').innerText = data.t13 || 0;
+            document.getElementById('s24').innerText = data.t24 || 0;
+        });
+
+        onValue(turnRef, (s) => {
+            currentTurn = s.val() || 1;
+            const ind = document.getElementById('turn-indicator');
+            if(currentTurn === myPlayerNum) { ind.innerText = "دورك! 🟢"; ind.className = "your-turn"; }
+            else { ind.innerText = "لاعب " + currentTurn + " 🔴"; ind.className = "waiting-turn"; }
+        });
+
+        onValue(movesRef, renderBoard);
+        onValue(emojiRef, showEmoji);
+        onValue(query(chatRef, limitToLast(20)), (snap) => {
+            renderChat(snap);
+            if(!isChatOpen && snap.exists()) document.getElementById('chat-notification').style.display = 'block';
+        });
+    }
+
+    // --- الدالة المحدثة لضمان التصفير والعودة ---
+    window.resetRoomAndReload = function() {
+        const btn = document.getElementById('reset-btn');
+        btn.innerText = "جاري تصفير الغرفة...";
+        btn.disabled = true;
+
+        // نقوم بحذف بيانات الغرفة من Firebase
+        remove(fullRoomRef)
+        .then(() => {
+            console.log("تم الحذف بنجاح");
+            window.location.reload(); // العودة للرئيسية فوراً بعد النجاح
+        })
+        .catch((error) => {
+            console.error("خطأ أثناء الحذف:", error);
+            window.location.reload(); // العودة للرئيسية حتى في حال حدوث خطأ
+        });
+        
+        // كخطة احتياطية إذا علق السيرفر، يتم إعادة التحميل بعد 3 ثواني تلقائياً
+        setTimeout(() => { window.location.reload(); }, 3000);
+    }
+
+    window.toggleChat = function() {
+        isChatOpen = !isChatOpen;
+        const win = document.getElementById('chat-window');
+        win.style.display = isChatOpen ? 'flex' : 'none';
+        if(isChatOpen) {
+            document.getElementById('chat-notification').style.display = 'none';
+            document.getElementById('chat-input').focus();
+        }
+    }
+
+    window.handleChatKey = (e) => { if(e.key === 'Enter') sendMessage(); };
+
+    window.sendMessage = async function() {
+        const input = document.getElementById('chat-input');
+        const text = input.value.trim();
+        if(!text) return;
+        await push(chatRef, { user: "لاعب " + myPlayerNum, msg: text, t: serverTimestamp() });
+        input.value = "";
+    }
+
+    function renderChat(snap) {
+        const container = document.getElementById('chat-messages');
+        container.innerHTML = "";
+        snap.forEach(child => {
+            const data = child.val();
+            const div = document.createElement('div');
+            div.className = 'msg-item';
+            div.innerHTML = `<div class="msg-user">${data.user}</div><div>${data.msg}</div>`;
+            container.appendChild(div);
+        });
+        container.scrollTop = container.scrollHeight;
+    }
+
+    window.startGame = async function() {
+        let deck = [];
+        for(let i=0; i<=6; i++) for(let j=i; j<=6; j++) deck.push([i,j]);
+        await set(poolRef, deck);
+        await set(turnRef, 1);
+        await set(statusRef, 'started');
+    }
+
+    async function dealInitial() { for(let i=0; i<7; i++) await drawPiece(true); }
+
+    window.drawPiece = async function(init = false) {
+        if(!init && currentTurn !== myPlayerNum) return;
+        const s = await get(poolRef);
+        let pool = s.val() || [];
+        if(pool.length === 0) return;
+        const idx = Math.floor(Math.random() * pool.length);
+        myHand.push(pool.splice(idx, 1)[0]);
+        await set(poolRef, pool);
+        if(!init) nextTurn();
+        renderHand();
+    }
+
+    window.playPiece = async function(idx, el) {
+        if(currentTurn !== myPlayerNum) return;
+        const p = myHand[idx];
+        let finalP = p, side = 'right';
+
+        if (leftEnd === null) { side = 'right'; } 
+        else if (p[0] === leftEnd || p[1] === leftEnd) { finalP = (p[1] === leftEnd) ? p : [p[1], p[0]]; side = 'left'; } 
+        else if (p[0] === rightEnd || p[1] === rightEnd) { finalP = (p[0] === rightEnd) ? p : [p[1], p[0]]; side = 'right'; } 
+        else {
+            el.classList.add('invalid-move');
+            document.getElementById('error-msg').style.display = 'block';
+            sfx.error.play();
+            setTimeout(() => { el.classList.remove('invalid-move'); document.getElementById('error-msg').style.display = 'none'; }, 500);
+            return;
+        }
+        sfx.play.play();
+        await push(movesRef, { v: finalP, side: side, t: serverTimestamp() });
+        myHand.splice(idx, 1);
+        renderHand();
+        if(myHand.length === 0) calculatePointsAndWin();
+        else nextTurn();
+    }
+
+    async function calculatePointsAndWin() {
+        const allHandsSnap = await get(ref(db, roomPath + '/hands'));
+        const allHands = allHandsSnap.val() || {};
+        let pts = 0;
+        const opps = (myPlayerNum === 1 || myPlayerNum === 3) ? [2, 4] : [1, 3];
+        opps.forEach(id => { if(allHands[id]) allHands[id].forEach(pc => pts += (pc[0]+pc[1])); });
+        const key = (myPlayerNum === 1 || myPlayerNum === 3) ? 't13' : 't24';
+        await runTransaction(ref(db, roomPath + '/scores/' + key), (s) => (s || 0) + pts);
+        await set(statusRef, 'finished');
+    }
+
+    function nextTurn() { let next = currentTurn + 1; if(next > totalPlayers) next = 1; set(turnRef, next); }
+
+    function renderBoard(snap) {
+        const table = document.getElementById('game-table');
+        table.innerHTML = "";
+        if (snap.exists()) {
+            const moves = Object.values(snap.val()).sort((a,b) => a.t - b.t);
+            let arr = [];
+            moves.forEach(m => m.side === 'left' ? arr.unshift(m.v) : arr.push(m.v));
+            leftEnd = arr[0][0]; rightEnd = arr[arr.length-1][1];
+            arr.forEach(v => table.appendChild(createPieceUI(v, true)));
+            setTimeout(() => { document.getElementById('game-table-wrapper').scrollLeft = 10000; }, 100);
+        }
+    }
+
+    function createPieceUI(val, board) {
+        const d = document.createElement('div');
+        d.className = 'domino ' + (board ? 'on-board' : 'in-hand');
+        [val[0], val[1]].forEach((v, i) => {
+            const h = document.createElement('div'); h.className = 'half';
+            for(let j=0; j<9; j++) {
+                const dot = document.createElement('div');
+                if(patterns[v].includes(j)) dot.className = 'dot v'; else dot.className = 'dot';
+                h.appendChild(dot);
+            }
+            d.appendChild(h);
+            if(i===0) d.appendChild(document.createElement('div')).className = 'line';
+        });
+        return d;
+    }
+
+    function renderHand() {
+        const h = document.getElementById('my-hand');
+        h.innerHTML = "";
+        myHand.forEach((p, i) => {
+            const d = createPieceUI(p, false);
+            d.onclick = (e) => window.playPiece(i, d);
+            h.appendChild(d);
+        });
+        set(ref(db, roomPath + '/hands/' + myPlayerNum), myHand);
+    }
+
+    window.sendEmoji = (emo) => set(emojiRef, { e: emo, t: Date.now() });
+    function showEmoji(snap) {
+        if(!snap.exists()) return;
+        const el = document.getElementById('floating-emoji');
+        el.innerText = snap.val().e;
+        el.style.opacity = "1";
+        setTimeout(() => el.style.opacity = "0", 2000);
+    }
+</script>
+</body>
+</html>
